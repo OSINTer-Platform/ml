@@ -5,13 +5,11 @@ from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
 from scipy.spatial import distance
 
-from OSINTmodules import *
+from modules import config, elastic
 
-configOptions = OSINTconfig.backendConfig()
+config_options = config.BackendConfig()
 
-esClient = OSINTelastic.returnArticleDBConn(configOptions)
-
-def generateEmbeddings(data):
+def generate_embeddings(data):
     tfidf_vectorizer = TfidfVectorizer(min_df=5, stop_words='english')
     tfidf_word_doc_matrix = tfidf_vectorizer.fit_transform(data)
     tfidf_embedding = umap.UMAP(min_dist=0, n_neighbors=10, metric='hellinger').fit(tfidf_word_doc_matrix)
@@ -25,8 +23,7 @@ def main(articles, numberOfNearest):
         article.similar = []
         data.append(article.content)
 
-    embeddings = generateEmbeddings(data)
-
+    embeddings = generate_embeddings(data)
 
     distances = distance.squareform(distance.pdist(embeddings))
 
@@ -34,9 +31,9 @@ def main(articles, numberOfNearest):
 
     for i,article in enumerate(articles):
         article.similar = [articles[point].id for point in closest[i]]
-        esClient.saveDocument(article)
+        config_options.es_article_client.save_document(article)
 
 if __name__ == "__main__":
-    articles = esClient.searchDocuments({"limit" : 10000})["documents"]
+    articles = config_options.es_article_client.query_documents(elastic.SearchQuery(limit = 0, complete=True))["documents"]
 
-    main(articles, 10)
+    main(articles, 12)
