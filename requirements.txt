@@ -1,0 +1,8 @@
+# Used for ML
+numba
+sklearn
+umap-learn
+
+# Used for interacting with OSINTer
+pydantic
+elasticsearch
