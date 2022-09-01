@@ -6,3 +6,4 @@ umap-learn
 # Used for interacting with OSINTer
 pydantic
 elasticsearch
+hdbscan
