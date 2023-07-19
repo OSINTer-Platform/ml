@@ -1,6 +1,6 @@
 # Used for ML
 numba
-sklearn
+scikit-learn
 umap-learn
 
 # Used for interacting with OSINTer
