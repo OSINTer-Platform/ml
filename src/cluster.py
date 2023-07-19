@@ -29,9 +29,9 @@ def main(articles, numberOfNearest):
     for i,article in enumerate(articles):
         article.ml = { "similar" : [articles[point].id for point in closest[i]], "cluster" : clusters[i] }
 
-        config_options.es_article_client.save_document(article)
+    config_options.es_article_client.save_documents(articles)
 
 if __name__ == "__main__":
-    articles = config_options.es_article_client.query_documents(elastic.SearchQuery(limit = 0, complete=True))["documents"]
+    articles = config_options.es_article_client.query_documents(elastic.SearchQuery(limit = 0, complete=True))
 
     main(articles, 12)
