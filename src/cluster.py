@@ -1,14 +1,14 @@
 import umap
 import numpy as np
 
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from scipy.spatial import distance
 
 from hdbscan import HDBSCAN
 
-from modules import config, elastic, objects
+from modules import elastic
+from . import config_options
 
-config_options = config.BackendConfig()
 
 def generate_embeddings(data):
     tfidf_vectorizer = TfidfVectorizer(min_df=5, stop_words='english')
