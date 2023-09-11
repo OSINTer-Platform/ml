@@ -10,3 +10,5 @@ hdbscan
 
 # Local utils
 python-dotenv
+
+mypy
