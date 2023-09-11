@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 
-from modules.config import BackendConfig
+from modules.config import BaseConfig
 
 load_dotenv()
 
-config_options = BackendConfig()
+config_options = BaseConfig()
