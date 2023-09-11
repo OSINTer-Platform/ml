@@ -7,3 +7,8 @@ umap-learn
 pydantic
 elasticsearch
 hdbscan
+
+# Local utils
+python-dotenv
+
+mypy

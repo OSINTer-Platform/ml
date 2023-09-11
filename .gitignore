@@ -1,6 +1,5 @@
-OSINTmodules
-OSINTprofiles
+profiles
+modules
 __pycache__
-data
-secret.key
-log
+logs
+.env
