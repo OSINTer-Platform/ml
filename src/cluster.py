@@ -42,10 +42,11 @@ def cluster_articles(
 
     for i, article in enumerate(articles):
         article.ml = {
-            "similar": [articles[point].id for point in closest[i]],
             "cluster": int(clusters[i]),
             "coordinates": (float(embeddings[i][0]), float(embeddings[i][1])),
         }
+
+        article.similar = [articles[point].id for point in closest[i]]
 
     return articles
 
@@ -53,7 +54,7 @@ def cluster_articles(
 def main() -> None:
     articles = config_options.es_article_client.query_documents(
         ArticleSearchQuery(limit=0), True
-    )
+    )[0]
 
     cluster_articles(articles, 20)
 
