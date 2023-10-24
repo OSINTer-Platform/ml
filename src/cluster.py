@@ -7,7 +7,7 @@ from hashlib import md5
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 
-from modules.objects import FullArticle, Cluster
+from modules.objects import FullArticle, FullCluster
 from .inference import extract_labeled, query_openai, construct_description_prompts
 
 from bertopic import BERTopic
@@ -101,10 +101,10 @@ def create_clusters(
     articles: list[FullArticle],
     save_model: None | str,
     use_openai: bool = True,
-) -> list[Cluster]:
+) -> list[FullCluster]:
     def create_cluster(
         record: dict[str, Any], topic_numbers: list[int], counter: ClusterCounter
-    ) -> Cluster:
+    ) -> FullCluster:
         cluster_count = counter.get_count()
         logger.debug(f"Starting processing of cluster nr {cluster_count}")
 
@@ -124,7 +124,7 @@ def create_clusters(
 
         logger.debug(f"Finished processing of cluster nr {cluster_count}")
 
-        return Cluster(
+        return FullCluster(
             id=md5(str(record["Topic"]).encode("utf-8")).hexdigest(),
             nr=record["Topic"],
             document_count=record["Count"],
@@ -155,20 +155,20 @@ def create_clusters(
     for topic, article in zip(topic_numbers, articles):
         article.ml["cluster"] = topic
 
-    handle_record: Callable[[dict[str, Any]], Cluster] = lambda record: create_cluster(
+    handle_record: Callable[[dict[str, Any]], FullCluster] = lambda record: create_cluster(
         record, topic_numbers, counter
     )
     with ThreadPoolExecutor(max_workers=6) as executor:
-        clusters: list[Cluster] = list(executor.map(handle_record, records))
+        clusters: list[FullCluster] = list(executor.map(handle_record, records))
 
     return clusters
 
 
 def cluster_new_articles(
-    articles: list[FullArticle], clusters: list[Cluster], saved_model: str
+    articles: list[FullArticle], clusters: list[FullCluster], saved_model: str
 ) -> None:
     def update_clusters(
-        clusters: list[Cluster], articles: list[FullArticle], topic_numbers: list[int]
+        clusters: list[FullCluster], articles: list[FullArticle], topic_numbers: list[int]
     ):
         for cluster in clusters:
             if cluster.nr not in topic_numbers:

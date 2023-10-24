@@ -1,5 +1,5 @@
 import logging
-from modules.objects import Cluster, FullArticle
+from modules.objects import FullCluster, FullArticle
 
 from src.cluster import create_clusters, cluster_new_articles
 
@@ -26,7 +26,7 @@ def map_articles(articles: list[FullArticle]):
     calc_similar(articles, 20)
 
 
-def cluster_articles(articles: list[FullArticle], clusters: list[Cluster]):
+def cluster_articles(articles: list[FullArticle], clusters: list[FullCluster]):
     logger.info("Clustering articles")
     cluster_new_articles(
         articles,
