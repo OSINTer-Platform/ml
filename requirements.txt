@@ -12,3 +12,4 @@ hdbscan
 python-dotenv
 
 mypy
+tenacity
