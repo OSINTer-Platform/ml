@@ -29,7 +29,7 @@ class OpenAIMessage(TypedDict):
 StrTuple = TypeVar("StrTuple", bound=Tuple[str, ...])
 
 
-def extract_labeled(text: str, extraction_labels: StrTuple) -> StrTuple | None:
+def extract_labeled(text: str, extraction_labels: StrTuple) -> StrTuple:
     """Given extraction_labels=[label_1, label_2, label_3]
     text should be formatted as:
 
@@ -38,20 +38,17 @@ def extract_labeled(text: str, extraction_labels: StrTuple) -> StrTuple | None:
     label_3: [A string of given length]
     """
 
-    try:
-        first_label = extraction_labels[0]
-        unprocesseced_response = text.split(first_label)[-1]
+    first_label = extraction_labels[0]
+    unprocesseced_response = text.split(first_label)[-1]
 
-        extractions: list[str] = []
+    extractions: list[str] = []
 
-        for label in extraction_labels[1:]:
-            response_parts = unprocesseced_response.split(label)
-            extractions.append(response_parts[0])
-            unprocesseced_response = response_parts[-1]
+    for label in extraction_labels[1:]:
+        response_parts = unprocesseced_response.split(label)
+        extractions.append(response_parts[0])
+        unprocesseced_response = response_parts[-1]
 
-        extractions.append(unprocesseced_response)
-    except IndexError:
-        return None
+    extractions.append(unprocesseced_response)
 
     return cast(StrTuple, tuple(extractions))
 

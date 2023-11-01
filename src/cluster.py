@@ -7,8 +7,10 @@ from hashlib import md5
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 
+from tenacity import RetryError, before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_random_exponential
+
 from modules.objects import FullArticle, FullCluster
-from .inference import extract_labeled, query_openai, construct_description_prompts
+from .inference import OpenAIMessage, extract_labeled, query_openai, construct_description_prompts
 
 from bertopic import BERTopic
 from sentence_transformers import SentenceTransformer
@@ -45,6 +47,22 @@ class ClusterCounter:
 def describe_cluster(
     keywords: list[str], representative_docs: list[str], use_openai: bool = True
 ) -> tuple[str, str, str]:
+
+    @retry(
+        stop=stop_after_attempt(3),
+        retry=retry_if_exception_type(IndexError),
+        before_sleep=before_sleep_log(logger, logging.DEBUG),
+    )
+    def get_open_ai_description(prompts: list[OpenAIMessage], labels: tuple[str, str, str]):
+
+        openai_response = query_openai(prompts)
+
+        if openai_response is None:
+            logger.warn(f'Response for cluster with title "{title}" failed to query openai')
+            return None
+
+        return extract_labeled(openai_response, labels)
+
     # Defaults in case openai return nonsensical answer
     title = " | ".join([keyword.capitalize() for keyword in keywords])
     description = " | ".join([keyword.capitalize() for keyword in keywords])
@@ -55,21 +73,20 @@ def describe_cluster(
         return default_response
 
     prompts, labels = construct_description_prompts(keywords, representative_docs)
-    openai_response = query_openai(prompts)
 
-    if openai_response is None:
-        logger.warn(f'Response for cluster with title "{title}" failed to query openai')
-        return default_response
+    try:
+        response = get_open_ai_description(prompts, labels)
 
-    extracted = extract_labeled(openai_response, labels)
+        if response:
+            return response
+        else:
+            return default_response
 
-    if extracted is None:
-        logger.warn(
-            f'Unable to extract details from OpenAI response with labels "{" | ".join(labels)}". OpenAI response: {openai_response}'
+    except RetryError:
+        logger.error(
+            f'Unable to extract details from OpenAI response with labels "{" | ".join(labels)}"'
         )
         return default_response
-
-    return extracted
 
 
 def fit_topic_model(articles: list[FullArticle]) -> BERTopic:
