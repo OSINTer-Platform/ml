@@ -34,8 +34,7 @@ def cluster_articles(articles: list[FullArticle], clusters: list[FullCluster]):
         saved_model="./models/topic_model",
     )
 
-
-def update_articles():
+def get_documents() -> tuple[list[FullArticle], list[FullCluster]]:
     logger.info("Downloading articles")
     articles = config_options.es_article_client.query_documents(
         ArticleSearchQuery(limit=0), True
@@ -43,6 +42,12 @@ def update_articles():
 
     logger.info("Downloading clusters")
     clusters = config_options.es_cluster_client.query_all_documents()
+
+    return articles, clusters
+
+
+def update_articles():
+    articles, clusters = get_documents()
 
     map_articles(articles)
     cluster_articles(articles, clusters)
@@ -64,20 +69,24 @@ def update_articles():
 
 
 def create_topic_model():
-    logger.info("Downloading articles")
-    articles = config_options.es_article_client.query_documents(
-        ArticleSearchQuery(limit=0), True
-    )[0]
+    articles, old_clusters = get_documents()
 
     logger.info("Generating clusters. This could take some time")
     new_clusters = create_clusters(
         articles, "./models/topic_model", bool(config_options.OPENAI_KEY)
     )
 
-    # TODO: Remove old clusters
+    old_cluster_ids = [cluster.id for cluster in old_clusters]
+    new_cluster_ids = [cluster.id for cluster in new_clusters]
+    clusters_to_remove = {id for id in old_cluster_ids if id not in new_cluster_ids}
+
     logger.info(f"Generated {len(new_clusters)} clusters. Saving them")
     saved_clusters = config_options.es_cluster_client.save_documents(new_clusters, True)
     logger.info(f"Save {saved_clusters} clusters")
+
+    logger.info(f"Removing {len(clusters_to_remove)} old clusters")
+    removed_clusters = config_options.es_cluster_client.delete_document(clusters_to_remove)
+    logger.info(f"Removed {removed_clusters} old clusters")
 
     map_articles(articles)
 
