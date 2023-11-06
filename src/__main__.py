@@ -41,7 +41,7 @@ def get_documents() -> tuple[list[FullArticle], list[FullCluster]]:
     return articles, clusters
 
 
-def update_articles():
+def update_articles() -> None:
     logger.info("Verifying presence of topic and umap models")
     for model in ["topic_model", "umap"]:
         if not os.path.exists(f"./models/{model}"):
@@ -86,7 +86,7 @@ def update_articles():
     logger.info(f"Updated {updated_clusters_count} clusters")
 
 
-def create_topic_model():
+def create_topic_model() -> None:
     articles, old_clusters = get_documents()
     embeddings = calc_embeddings(articles)
 
@@ -129,8 +129,8 @@ def create_topic_model():
     logger.info(f"Updated {updated_articles_count} articles")
 
 
-def summarize_articles():
-    def get_prompt(content) -> list[OpenAIMessage]:
+def summarize_articles() -> None:
+    def get_prompt(content: str) -> list[OpenAIMessage]:
         return [
             {
                 "role": "system",
@@ -139,7 +139,7 @@ def summarize_articles():
             {"role": "user", "content": f'"""{content[:10_000]}"""'},
         ]
 
-    def summarize_article(article: FullArticle):
+    def summarize_article(article: FullArticle) -> None:
         if article.summary:
             return
 

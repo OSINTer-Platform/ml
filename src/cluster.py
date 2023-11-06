@@ -52,7 +52,7 @@ def describe_cluster(
     )
     def get_open_ai_description(
         prompts: list[OpenAIMessage], labels: tuple[str, str, str]
-    ):
+    ) -> None | tuple[str, str, str]:
         openai_response = query_openai(prompts)
 
         if openai_response is None:
@@ -179,7 +179,7 @@ def cluster_new_articles(
         clusters: list[FullCluster],
         articles: list[FullArticle],
         topic_numbers: list[int],
-    ):
+    ) -> None:
         for cluster in clusters:
             if cluster.nr not in topic_numbers:
                 continue

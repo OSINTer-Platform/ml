@@ -63,7 +63,7 @@ def query_openai(prompts: list[OpenAIMessage]) -> str | None:
     def query(q: list[OpenAIMessage]) -> dict[str, Any]:
         return cast(
             dict[str, Any],
-            openai.ChatCompletion.create(
+            openai.ChatCompletion.create(  # type: ignore[no-untyped-call]
                 model=config_options.OPENAI_MODEL,
                 messages=q,
                 n=1,
@@ -74,7 +74,7 @@ def query_openai(prompts: list[OpenAIMessage]) -> str | None:
         )
 
     try:
-        return query(prompts)["choices"][0]["message"]["content"]
+        return cast(str, query(prompts)["choices"][0]["message"]["content"])
     except RetryError:
         return None
 

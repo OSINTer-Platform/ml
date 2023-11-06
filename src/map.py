@@ -26,7 +26,7 @@ def calc_cords(
     articles: list[FullArticle],
     embeddings: NDArray[Any, Any],
     model: UMAP | None = None,
-):
+) -> UMAP:
     reduced_embeddings, model = _dim_reduction(embeddings, model)
 
     for i, article in enumerate(articles):
@@ -38,7 +38,7 @@ def calc_cords(
     return model
 
 
-def calc_similar(articles: list[FullArticle], numberOfNearest: int):
+def calc_similar(articles: list[FullArticle], numberOfNearest: int) -> None:
     """Relies on proper coordinates for all articles, so should be called AFTER calc_cords"""
     cords = [
         [article.ml["coordinates"][0], article.ml["coordinates"][1]]

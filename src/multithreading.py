@@ -4,8 +4,6 @@ import logging
 
 from typing import Callable, TypeVar
 
-from modules.objects import FullArticle
-
 logger = logging.getLogger("osinter")
 
 
@@ -14,7 +12,7 @@ class Counter:
         self.lock = multiprocessing.Manager().Lock()
         self.count = 0
 
-    def get_count(self):
+    def get_count(self) -> int:
         with self.lock:
             self.count += 1
             return self.count
