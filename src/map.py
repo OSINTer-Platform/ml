@@ -1,29 +1,41 @@
-from typing import cast
-import umap
+from typing import Any, cast
+from umap import UMAP
 from nptyping import NDArray, Float32, Shape
 
 from sklearn.neighbors import NearestNeighbors
-from sklearn.feature_extraction.text import TfidfVectorizer
 
 from modules.objects import FullArticle
 
 
-def _dim_reduction(text_list: list[str]) -> NDArray[Shape["*, 2"], Float32]:
-    tfidf_vectorizer = TfidfVectorizer(min_df=5, stop_words="english")
-    tfidf_word_doc_matrix = tfidf_vectorizer.fit_transform(text_list)
-    tfidf_embedding = umap.UMAP(min_dist=0, n_neighbors=10, metric="hellinger").fit(
-        tfidf_word_doc_matrix
-    )
+def _dim_reduction(
+    embeddings: NDArray[Any, Any], model: UMAP | None
+) -> tuple[NDArray[Shape["*, 2"], Float32], UMAP]:
+    if not model:
+        model = cast(
+            UMAP,
+            UMAP(min_dist=0, n_neighbors=10, n_components=2, metric="cosine").fit(
+                embeddings
+            ),
+        )
 
-    return cast(NDArray[Shape["*, 2"], Float32], tfidf_embedding.embedding_)
+    reduced_embeddings = model.transform(embeddings)
+    return cast(NDArray[Shape["*, 2"], Float32], reduced_embeddings), model
 
 
-def calc_cords(articles: list[FullArticle]):
-    contents = [article.content for article in articles]
-    embeddings = _dim_reduction(contents)
+def calc_cords(
+    articles: list[FullArticle],
+    embeddings: NDArray[Any, Any],
+    model: UMAP | None = None,
+):
+    reduced_embeddings, model = _dim_reduction(embeddings, model)
 
     for i, article in enumerate(articles):
-        article.ml["coordinates"] = (float(embeddings[i][0]), float(embeddings[i][1]))
+        article.ml["coordinates"] = (
+            float(reduced_embeddings[i][0]),
+            float(reduced_embeddings[i][1]),
+        )
+
+    return model
 
 
 def calc_similar(articles: list[FullArticle], numberOfNearest: int):

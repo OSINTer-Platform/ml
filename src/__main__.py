@@ -1,38 +1,33 @@
 import logging
+import os
+import pickle
+from typing import Any, cast
+
+from nptyping import NDArray
+from umap import UMAP
 from modules.objects import FullCluster, FullArticle
 
 from src.cluster import create_clusters, cluster_new_articles
+from src.inference import OpenAIMessage, query_openai
+from src.multithreading import process_threaded
 
 from .map import calc_cords, calc_similar
 
-from . import config_options
+from . import config_options, embedding_model
 from modules.elastic import ArticleSearchQuery
 
 logger = logging.getLogger("osinter")
 
 
-def map_articles(articles: list[FullArticle]):
-    if articles is None:
-        logger.info("Downloading articles for ML")
+def calc_embeddings(articles: list[FullArticle]) -> NDArray[Any, Any]:
+    logger.debug("Pre-calculating embeddings for articles")
+    contents = [article.content for article in articles]
 
-        articles = config_options.es_article_client.query_documents(
-            ArticleSearchQuery(limit=0), True
-        )[0]
-
-    logger.info("Calculating cords")
-    calc_cords(articles)
-
-    logger.info("Grouping article by similarity")
-    calc_similar(articles, 20)
-
-
-def cluster_articles(articles: list[FullArticle], clusters: list[FullCluster]):
-    logger.info("Clustering articles")
-    cluster_new_articles(
-        articles,
-        clusters,
-        saved_model="./models/topic_model",
+    return cast(
+        NDArray[Any, Any],
+        embedding_model.encode(contents, show_progress_bar=True, convert_to_numpy=True),
     )
+
 
 def get_documents() -> tuple[list[FullArticle], list[FullCluster]]:
     logger.info("Downloading articles")
@@ -47,10 +42,33 @@ def get_documents() -> tuple[list[FullArticle], list[FullCluster]]:
 
 
 def update_articles():
-    articles, clusters = get_documents()
+    logger.info("Verifying presence of topic and umap models")
+    for model in ["topic_model", "umap"]:
+        if not os.path.exists(f"./models/{model}"):
+            logger.error(f"Missing {model} model")
+            raise RuntimeError(f"Model at ./models/{model} not found")
 
-    map_articles(articles)
-    cluster_articles(articles, clusters)
+    articles, clusters = get_documents()
+    embeddings = calc_embeddings(articles)
+
+    logger.info("Loading UMAP model")
+
+    with open("./models/umap", "rb") as f:
+        umap: UMAP = pickle.load(f)
+
+    logger.info("Calculating cords")
+    calc_cords(articles, embeddings, umap)
+
+    logger.info("Calculating similar articles")
+    calc_similar(articles, 20)
+
+    logger.info("Clustering articles")
+    cluster_new_articles(
+        articles,
+        embeddings,
+        clusters,
+        saved_model="./models/topic_model",
+    )
 
     logger.info(f"Updating {len(articles)} articles")
 
@@ -70,10 +88,11 @@ def update_articles():
 
 def create_topic_model():
     articles, old_clusters = get_documents()
+    embeddings = calc_embeddings(articles)
 
-    logger.info("Generating clusters. This could take some time")
+    logger.info("Generating clusters and topic model. This could take some time")
     new_clusters = create_clusters(
-        articles, "./models/topic_model", bool(config_options.OPENAI_KEY)
+        articles, embeddings, "./models/topic_model", bool(config_options.OPENAI_KEY)
     )
 
     old_cluster_ids = [cluster.id for cluster in old_clusters]
@@ -85,10 +104,21 @@ def create_topic_model():
     logger.info(f"Save {saved_clusters} clusters")
 
     logger.info(f"Removing {len(clusters_to_remove)} old clusters")
-    removed_clusters = config_options.es_cluster_client.delete_document(clusters_to_remove)
+    removed_clusters = config_options.es_cluster_client.delete_document(
+        clusters_to_remove
+    )
     logger.info(f"Removed {removed_clusters} old clusters")
 
-    map_articles(articles)
+    logger.info("Creating umap model")
+    model = calc_cords(articles, embeddings)
+
+    logger.info("Saving umap model")
+
+    with open("./models/umap", "wb") as f:
+        pickle.dump(model, f)
+
+    logger.info("Calculating similar articles")
+    calc_similar(articles, 20)
 
     logger.info(f"Updating {len(articles)} articles")
 

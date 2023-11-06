@@ -10,9 +10,9 @@ from modules.objects import FullArticle, FullCluster
 from .inference import OpenAIMessage, extract_labeled, query_openai, construct_description_prompts
 
 from .multithreading import process_threaded
+from . import embedding_model
 
 from bertopic import BERTopic
-from sentence_transformers import SentenceTransformer
 from umap import UMAP
 from hdbscan import HDBSCAN
 from sklearn.feature_extraction.text import CountVectorizer
@@ -29,7 +29,6 @@ hdbscan_model = HDBSCAN(
     prediction_data=True,
 )
 vectorizer_model = CountVectorizer(stop_words="english", min_df=2, ngram_range=(1, 2))
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 
 def describe_cluster(
@@ -77,7 +76,9 @@ def describe_cluster(
         return default_response
 
 
-def fit_topic_model(articles: list[FullArticle]) -> BERTopic:
+def fit_topic_model(
+    articles: list[FullArticle], embeddings: NDArray[Any, Any]
+) -> BERTopic:
     topic_model = BERTopic(
         # Pipeline models
         embedding_model=embedding_model,
@@ -89,13 +90,7 @@ def fit_topic_model(articles: list[FullArticle]) -> BERTopic:
         verbose=True,
     )
 
-    logger.debug("Pre-calculating embeddings for articles")
     contents = [article.content for article in articles]
-
-    embeddings = cast(
-        NDArray[Any, Any],
-        embedding_model.encode(contents, show_progress_bar=True, convert_to_numpy=True),
-    )
 
     logger.debug("Fitting to BERTopic")
     topic_model.fit_transform(contents, embeddings)
@@ -137,7 +132,7 @@ def create_clusters(
         )
 
     logger.debug("Fitting new model")
-    topic_model = fit_topic_model(articles)
+    topic_model = fit_topic_model(articles, embeddings)
 
     if save_model:
         logger.debug(f'Saving model to file "{save_model}"')
@@ -162,7 +157,10 @@ def create_clusters(
 
 
 def cluster_new_articles(
-    articles: list[FullArticle], clusters: list[FullCluster], saved_model: str
+    articles: list[FullArticle],
+    embeddings: NDArray[Any, Any],
+    clusters: list[FullCluster],
+    saved_model: str,
 ) -> None:
     def update_clusters(
         clusters: list[FullCluster], articles: list[FullArticle], topic_numbers: list[int]
@@ -181,7 +179,9 @@ def cluster_new_articles(
     logger.debug(f'Loading model from file "{saved_model}"')
 
     topic_model = BERTopic.load(saved_model)
-    topic_numbers, _ = topic_model.transform([article.content for article in articles])
+    topic_numbers, _ = topic_model.transform(
+        [article.content for article in articles], embeddings
+    )
 
     # Despite typed differently, topic_numbers is numpy int64 and needs conversion
     topic_numbers = [int(nr) for nr in topic_numbers]
