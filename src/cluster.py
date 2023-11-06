@@ -4,12 +4,23 @@ from nptyping import NDArray
 import logging
 from hashlib import md5
 
-from tenacity import RetryError, before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_random_exponential
+from tenacity import (
+    RetryError,
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+)
 
 from modules.objects import FullArticle, FullCluster
-from .inference import OpenAIMessage, extract_labeled, query_openai, construct_description_prompts
 
 from .multithreading import process_threaded
+from .inference import (
+    OpenAIMessage,
+    extract_labeled,
+    query_openai,
+    construct_description_prompts,
+)
 from . import embedding_model
 
 from bertopic import BERTopic
@@ -34,18 +45,20 @@ vectorizer_model = CountVectorizer(stop_words="english", min_df=2, ngram_range=(
 def describe_cluster(
     keywords: list[str], representative_docs: list[str], use_openai: bool = True
 ) -> tuple[str, str, str]:
-
     @retry(
         stop=stop_after_attempt(3),
         retry=retry_if_exception_type(IndexError),
         before_sleep=before_sleep_log(logger, logging.DEBUG),
     )
-    def get_open_ai_description(prompts: list[OpenAIMessage], labels: tuple[str, str, str]):
-
+    def get_open_ai_description(
+        prompts: list[OpenAIMessage], labels: tuple[str, str, str]
+    ):
         openai_response = query_openai(prompts)
 
         if openai_response is None:
-            logger.warn(f'Response for cluster with title "{title}" failed to query openai')
+            logger.warn(
+                f'Response for cluster with title "{title}" failed to query openai'
+            )
             return None
 
         return extract_labeled(openai_response, labels)
@@ -163,7 +176,9 @@ def cluster_new_articles(
     saved_model: str,
 ) -> None:
     def update_clusters(
-        clusters: list[FullCluster], articles: list[FullArticle], topic_numbers: list[int]
+        clusters: list[FullCluster],
+        articles: list[FullArticle],
+        topic_numbers: list[int],
     ):
         for cluster in clusters:
             if cluster.nr not in topic_numbers:
