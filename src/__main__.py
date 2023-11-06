@@ -129,4 +129,41 @@ def create_topic_model():
     logger.info(f"Updated {updated_articles_count} articles")
 
 
-create_topic_model()
+def summarize_articles():
+    def get_prompt(content) -> list[OpenAIMessage]:
+        return [
+            {
+                "role": "system",
+                "content": "Please summarize the following article delimited by triple quotes, in 3-6 sentences and in a way that preserves the technical details. Assume the audience is experts in the field.",
+            },
+            {"role": "user", "content": f'"""{content[:10_000]}"""'},
+        ]
+
+    def summarize_article(article: FullArticle):
+        if article.summary:
+            return
+
+        prompt = get_prompt(article.content)
+        article.summary = query_openai(prompt)
+
+    logger.info(f"Downloading articles")
+    articles = config_options.es_article_client.query_documents(
+        ArticleSearchQuery(limit=0, sort_order="desc", sort_by="publish_date"), True
+    )[0]
+
+    logger.info(f"Starting summarization")
+    try:
+        process_threaded(articles, summarize_article)
+        logger.info("Summarization done.")
+    except:
+        logger.error("Summarization failed! Saving processed information and exiting")
+
+    logger.info(f"Updating {len(articles)} articles")
+
+    updated_articles_count = config_options.es_article_client.update_documents(
+        articles, ["summary"]
+    )
+
+    logger.info(f"Updated {updated_articles_count} articles")
+
+
