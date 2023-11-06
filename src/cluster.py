@@ -4,13 +4,12 @@ from nptyping import NDArray
 import logging
 from hashlib import md5
 
-import multiprocessing
-from concurrent.futures import ThreadPoolExecutor
-
 from tenacity import RetryError, before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_random_exponential
 
 from modules.objects import FullArticle, FullCluster
 from .inference import OpenAIMessage, extract_labeled, query_openai, construct_description_prompts
+
+from .multithreading import process_threaded
 
 from bertopic import BERTopic
 from sentence_transformers import SentenceTransformer
@@ -31,17 +30,6 @@ hdbscan_model = HDBSCAN(
 )
 vectorizer_model = CountVectorizer(stop_words="english", min_df=2, ngram_range=(1, 2))
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-
-
-class ClusterCounter:
-    def __init__(self) -> None:
-        self.lock = multiprocessing.Manager().Lock()
-        self.count = 0
-
-    def get_count(self):
-        with self.lock:
-            self.count += 1
-            return self.count
 
 
 def describe_cluster(
@@ -116,15 +104,11 @@ def fit_topic_model(articles: list[FullArticle]) -> BERTopic:
 
 def create_clusters(
     articles: list[FullArticle],
+    embeddings: NDArray[Any, Any],
     save_model: None | str,
     use_openai: bool = True,
 ) -> list[FullCluster]:
-    def create_cluster(
-        record: dict[str, Any], topic_numbers: list[int], counter: ClusterCounter
-    ) -> FullCluster:
-        cluster_count = counter.get_count()
-        logger.debug(f"Starting processing of cluster nr {cluster_count}")
-
+    def create_cluster(record: dict[str, Any], topic_numbers: list[int]) -> FullCluster:
         topic_docs: list[FullArticle] = []
         representative_docs: list[FullArticle] = []
 
@@ -138,8 +122,6 @@ def create_clusters(
         title, description, summary = describe_cluster(
             record["Representation"], record["Representative_Docs"], use_openai
         )
-
-        logger.debug(f"Finished processing of cluster nr {cluster_count}")
 
         return FullCluster(
             id=md5(str(record["Topic"]).encode("utf-8")).hexdigest(),
@@ -162,7 +144,6 @@ def create_clusters(
         topic_model.save(save_model, serialization="pickle")
 
     logger.debug("Normalizing and enriching cluster data")
-    counter = ClusterCounter()
 
     records = topic_model.get_topic_info().to_dict("records")
 
@@ -172,11 +153,10 @@ def create_clusters(
     for topic, article in zip(topic_numbers, articles):
         article.ml["cluster"] = topic
 
-    handle_record: Callable[[dict[str, Any]], FullCluster] = lambda record: create_cluster(
-        record, topic_numbers, counter
-    )
-    with ThreadPoolExecutor(max_workers=6) as executor:
-        clusters: list[FullCluster] = list(executor.map(handle_record, records))
+    handle_record: Callable[
+        [dict[str, Any]], FullCluster
+    ] = lambda record: create_cluster(record, topic_numbers)
+    clusters: list[FullCluster] = process_threaded(records, handle_record)
 
     return clusters
 
