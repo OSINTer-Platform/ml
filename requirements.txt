@@ -13,3 +13,4 @@ python-dotenv
 
 mypy
 tenacity
+typer

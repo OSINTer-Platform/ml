@@ -3,9 +3,9 @@ import os
 import pickle
 from typing import Any, cast
 
+import typer
 from nptyping import NDArray
 from umap import UMAP
-from modules.objects import FullCluster, FullArticle
 
 from src.cluster import create_clusters, cluster_new_articles
 from src.inference import OpenAIMessage, query_openai
@@ -15,8 +15,10 @@ from .map import calc_cords, calc_similar
 
 from . import config_options, embedding_model
 from modules.elastic import ArticleSearchQuery
+from modules.objects import FullCluster, FullArticle
 
 logger = logging.getLogger("osinter")
+app = typer.Typer(no_args_is_help=True)
 
 
 def calc_embeddings(articles: list[FullArticle]) -> NDArray[Any, Any]:
@@ -41,6 +43,7 @@ def get_documents() -> tuple[list[FullArticle], list[FullCluster]]:
     return articles, clusters
 
 
+@app.command()
 def update_articles() -> None:
     logger.info("Verifying presence of topic and umap models")
     for model in ["topic_model", "umap"]:
@@ -86,7 +89,8 @@ def update_articles() -> None:
     logger.info(f"Updated {updated_clusters_count} clusters")
 
 
-def create_topic_model() -> None:
+@app.command()
+def create_models() -> None:
     articles, old_clusters = get_documents()
     embeddings = calc_embeddings(articles)
 
@@ -129,7 +133,8 @@ def create_topic_model() -> None:
     logger.info(f"Updated {updated_articles_count} articles")
 
 
-def summarize_articles() -> None:
+@app.command()
+def summarize_articles(all: bool = False) -> None:
     def get_prompt(content: str) -> list[OpenAIMessage]:
         return [
             {
@@ -148,7 +153,7 @@ def summarize_articles() -> None:
 
     logger.info(f"Downloading articles")
     articles = config_options.es_article_client.query_documents(
-        ArticleSearchQuery(limit=0, sort_order="desc", sort_by="publish_date"), True
+        ArticleSearchQuery(limit=0 if all else 100, sort_order="desc", sort_by="publish_date"), True
     )[0]
 
     logger.info(f"Starting summarization")
@@ -166,4 +171,5 @@ def summarize_articles() -> None:
 
     logger.info(f"Updated {updated_articles_count} articles")
 
-
+if __name__ == "__main__":
+    app()
