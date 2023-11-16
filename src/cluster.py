@@ -3,6 +3,7 @@ from nptyping import NDArray
 
 import logging
 from hashlib import md5
+from openai.types.chat import ChatCompletionMessageParam
 
 from tenacity import (
     RetryError,
@@ -16,7 +17,6 @@ from modules.objects import FullArticle, FullCluster
 
 from .multithreading import process_threaded
 from .inference import (
-    OpenAIMessage,
     extract_labeled,
     query_openai,
     construct_description_prompts,
@@ -51,7 +51,7 @@ def describe_cluster(
         before_sleep=before_sleep_log(logger, logging.DEBUG),
     )
     def get_open_ai_description(
-        prompts: list[OpenAIMessage], labels: tuple[str, str, str]
+        prompts: list[ChatCompletionMessageParam], labels: tuple[str, str, str]
     ) -> None | tuple[str, str, str]:
         openai_response = query_openai(prompts)
 

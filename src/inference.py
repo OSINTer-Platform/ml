@@ -1,12 +1,12 @@
-from typing import Any, cast, Literal, Tuple, TypeVar
-from typing_extensions import TypedDict
+from typing import Any, cast, Tuple, TypeVar
 
 import logging
 
 from . import config_options
 
-import openai
-from openai.error import OpenAIError
+from openai import OpenAIError, OpenAI
+from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
+
 from tenacity import (
     RetryError,
     before_sleep_log,
@@ -16,14 +16,9 @@ from tenacity import (
     wait_random_exponential,
 )
 
-openai.api_key = config_options.OPENAI_KEY
+openai_client = OpenAI(api_key=config_options.OPENAI_KEY)
 
 logger = logging.getLogger("osinter")
-
-
-class OpenAIMessage(TypedDict):
-    role: Literal["user", "assistant", "system"]
-    content: str
 
 
 StrTuple = TypeVar("StrTuple", bound=Tuple[str, ...])
@@ -53,35 +48,32 @@ def extract_labeled(text: str, extraction_labels: StrTuple) -> StrTuple:
     return cast(StrTuple, tuple(extractions))
 
 
-def query_openai(prompts: list[OpenAIMessage]) -> str | None:
+def query_openai(prompts: list[ChatCompletionMessageParam]) -> str | None:
     @retry(
         wait=wait_random_exponential(min=1, max=600),
         stop=stop_after_attempt(10),
         retry=retry_if_exception_type(OpenAIError),
         before_sleep=before_sleep_log(logger, logging.DEBUG),
     )
-    def query(q: list[OpenAIMessage]) -> dict[str, Any]:
-        return cast(
-            dict[str, Any],
-            openai.ChatCompletion.create(  # type: ignore[no-untyped-call]
+    def query(q: list[ChatCompletionMessageParam]) -> ChatCompletion:
+        return openai_client.chat.completions.create(
                 model=config_options.OPENAI_MODEL,
                 messages=q,
                 n=1,
                 temperature=1,
                 frequency_penalty=0,
                 presence_penalty=0,
-            ),
-        )
+            )
 
     try:
-        return cast(str, query(prompts)["choices"][0]["message"]["content"])
+        return query(prompts).choices[0].message.content
     except RetryError:
         return None
 
 
 def construct_description_prompts(
     keywords: list[str], representative_docs: list[str]
-) -> tuple[list[OpenAIMessage], tuple[str, str, str]]:
+) -> tuple[list[ChatCompletionMessageParam], tuple[str, str, str]]:
     descriptionPrompt = f"""
 I have topic is described by the following keywords: {' '.join(keywords)}
 The following documents delimited by triple quotes are a small but representative subset of all documents in the topic:
@@ -99,7 +91,7 @@ topic_description: <description>
 topic_summary: <summary>
     """
 
-    openai_messages: list[OpenAIMessage] = [
+    openai_messages: list[ChatCompletionMessageParam] = [
         {"role": "user", "content": descriptionPrompt}
     ]
     openai_messages.extend(

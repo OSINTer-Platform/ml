@@ -2,13 +2,14 @@ import logging
 import os
 import pickle
 from typing import Any, cast
+from openai.types.chat import ChatCompletionMessageParam
 
 import typer
 from nptyping import NDArray
 from umap import UMAP
 
 from src.cluster import create_clusters, cluster_new_articles
-from src.inference import OpenAIMessage, query_openai
+from src.inference import query_openai
 from src.multithreading import process_threaded
 
 from .map import calc_cords, calc_similar
@@ -137,7 +138,7 @@ def create_models() -> None:
 
 @app.command()
 def summarize_articles(all: bool = False, batch_size: int = 100) -> None:
-    def get_prompt(content: str) -> list[OpenAIMessage]:
+    def get_prompt(content: str) -> list[ChatCompletionMessageParam]:
         return [
             {
                 "role": "system",
