@@ -89,6 +89,8 @@ def update_articles() -> None:
     logger.info(f"Updated {updated_clusters_count} clusters")
 
 
+
+
 @app.command()
 def create_models() -> None:
     articles, old_clusters = get_documents()
@@ -134,7 +136,7 @@ def create_models() -> None:
 
 
 @app.command()
-def summarize_articles(all: bool = False, batch_size: int = 20) -> None:
+def summarize_articles(all: bool = False, batch_size: int = 100) -> None:
     def get_prompt(content: str) -> list[OpenAIMessage]:
         return [
             {
@@ -153,22 +155,36 @@ def summarize_articles(all: bool = False, batch_size: int = 20) -> None:
 
     logger.info(f"Downloading articles")
     articles = config_options.es_article_client.query_documents(
-        ArticleSearchQuery(limit=0 if all else 2000, sort_order="asc", sort_by="publish_date"), True
+        ArticleSearchQuery(
+            limit=0 if all else 200, sort_order="asc", sort_by="publish_date"
+        ),
+        True,
     )[0]
 
     articles_without_summary = [article for article in articles if not article.summary]
     updated_articles_count = 0
 
-    for i, article_sublist in enumerate([articles_without_summary[i:i+batch_size] for i in range(0,len(articles_without_summary),batch_size)]):
-        logger.info(f"Starting summarization of batch {i} out of {int(len(articles_without_summary) / batch_size) + 1}")
+    for i, article_sublist in enumerate(
+        [
+            articles_without_summary[i : i + batch_size]
+            for i in range(0, len(articles_without_summary), batch_size)
+        ]
+    ):
+        logger.info(
+            f"Starting summarization of batch {i} out of {int(len(articles_without_summary) / batch_size) + 1}"
+        )
         try:
             process_threaded(article_sublist, summarize_article)
             logger.info("Summarization done.")
         except:
-            logger.error("Summarization failed! Saving processed information and exiting")
+            logger.error(
+                "Summarization failed! Saving processed information and exiting"
+            )
             break
         finally:
-            articles_to_update = [article for article in article_sublist if article.summary]
+            articles_to_update = [
+                article for article in article_sublist if article.summary
+            ]
 
             logger.info(f"Updating {len(articles_to_update)} articles of batch {i}")
 
@@ -177,6 +193,7 @@ def summarize_articles(all: bool = False, batch_size: int = 20) -> None:
             )
 
     logger.info(f"Updated {updated_articles_count} articles")
+
 
 if __name__ == "__main__":
     app()
