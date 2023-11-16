@@ -157,7 +157,7 @@ def summarize_articles(all: bool = False, batch_size: int = 100) -> None:
     logger.info(f"Downloading articles")
     articles = config_options.es_article_client.query_documents(
         ArticleSearchQuery(
-            limit=0 if all else 200, sort_order="asc", sort_by="publish_date"
+            limit=0 if all else 200, sort_order="desc", sort_by="publish_date"
         ),
         True,
     )[0]
