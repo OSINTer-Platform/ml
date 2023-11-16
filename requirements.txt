@@ -15,3 +15,5 @@ mypy
 tenacity
 typer
 openai
+nptyping
+bertopic
