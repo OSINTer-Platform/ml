@@ -178,8 +178,8 @@ def summarize_articles(all: bool = False, batch_size: int = 100) -> None:
             process_threaded(article_sublist, summarize_article)
             logger.info("Summarization done.")
         except:
-            logger.error(
-                "Summarization failed! Saving processed information and exiting"
+            logger.exception(
+                f"Summarization failed! Saving processed information and exiting"
             )
             break
         finally:
