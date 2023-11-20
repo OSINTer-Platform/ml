@@ -13,7 +13,7 @@ def _dim_reduction(
     if not model:
         model = cast(
             UMAP,
-            UMAP(min_dist=0, n_neighbors=10, n_components=2, metric="cosine").fit(
+            UMAP(min_dist=0, n_neighbors=7, n_components=2, metric="cosine", random_state=42).fit(
                 embeddings
             ),
         )

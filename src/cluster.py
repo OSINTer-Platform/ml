@@ -31,10 +31,12 @@ from sklearn.feature_extraction.text import CountVectorizer
 logger = logging.getLogger("osinter")
 
 umap_model = UMAP(
-    n_neighbors=15, n_components=5, min_dist=0.0, metric="cosine", random_state=42
+    n_neighbors=7, n_components=20, min_dist=0.0, metric="cosine", random_state=42
 )
 hdbscan_model = HDBSCAN(
-    min_cluster_size=10,
+    min_cluster_size=5,
+    min_samples=5,
+    cluster_selection_epsilon=0.2,
     metric="euclidean",
     cluster_selection_method="eom",
     prediction_data=True,
