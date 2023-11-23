@@ -30,7 +30,7 @@ def calc_cords(
     reduced_embeddings, model = _dim_reduction(embeddings, model)
 
     for i, article in enumerate(articles):
-        article.ml["coordinates"] = (
+        article.ml.coordinates = (
             float(reduced_embeddings[i][0]),
             float(reduced_embeddings[i][1]),
         )
@@ -41,7 +41,7 @@ def calc_cords(
 def calc_similar(articles: list[FullArticle], numberOfNearest: int) -> None:
     """Relies on proper coordinates for all articles, so should be called AFTER calc_cords"""
     cords = [
-        [article.ml["coordinates"][0], article.ml["coordinates"][1]]
+        [article.ml.coordinates[0], article.ml.coordinates[1]]
         for article in articles
     ]
     _, closest = (

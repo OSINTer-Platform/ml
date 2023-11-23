@@ -161,7 +161,7 @@ def create_clusters(
     topic_numbers = cast(list[int], topic_model.topics_)
 
     for topic, article in zip(topic_numbers, articles):
-        article.ml["cluster"] = topic
+        article.ml.cluster = topic
 
     handle_record: Callable[
         [dict[str, Any]], FullCluster
@@ -204,6 +204,6 @@ def cluster_new_articles(
     topic_numbers = [int(nr) for nr in topic_numbers]
 
     for topic, article in zip(topic_numbers, articles):
-        article.ml["cluster"] = topic
+        article.ml.cluster = topic
 
     update_clusters(clusters, articles, topic_numbers)
