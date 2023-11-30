@@ -71,7 +71,6 @@ def update_articles() -> None:
         articles,
         embeddings,
         clusters,
-        saved_model="./models/topic_model",
     )
 
     logger.info(f"Updating {len(articles)} articles")
@@ -94,13 +93,14 @@ def update_articles() -> None:
 
 @app.command()
 def create_models() -> None:
+    if not bool(config_options.OPENAI_KEY):
+        raise Exception("OpenAI needed to generate clusters")
+
     articles, old_clusters = get_documents()
     embeddings = calc_embeddings(articles)
 
     logger.info("Generating clusters and topic model. This could take some time")
-    new_clusters = create_clusters(
-        articles, embeddings, "./models/topic_model", bool(config_options.OPENAI_KEY)
-    )
+    new_clusters = create_clusters(articles, embeddings)
 
     old_cluster_ids = [cluster.id for cluster in old_clusters]
     new_cluster_ids = [cluster.id for cluster in new_clusters]
