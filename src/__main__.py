@@ -6,11 +6,16 @@ from openai.types.chat import ChatCompletionMessageParam
 import typer
 from nptyping import NDArray
 from sentence_transformers import SentenceTransformer
-from src.cluster import create_clusters, cluster_new_articles
+
+from src.cluster import (
+    create_clusters,
+    cluster_new_articles,
+    UMAP_MODEL_PATH as CLUSTER_UMAP_PATH,
+    HDBSCAN_MODEL_PATH as CLUSTER_HDBSCAN_PATH,
+)
 from src.inference import query_openai
 from src.multithreading import process_threaded
-
-from .map import calc_cords, calc_similar
+from src.map import calc_cords, calc_similar, UMAP_MODEL_PATH as MAP_UMAP_PATH
 
 from . import config_options
 from modules.elastic import ArticleSearchQuery
@@ -48,10 +53,10 @@ def get_documents() -> tuple[list[FullArticle], list[FullCluster]]:
 @app.command()
 def update_articles() -> None:
     logger.info("Verifying presence of topic and umap models")
-    for model in ["topic_model", "umap"]:
-        if not os.path.exists(f"./models/{model}"):
-            logger.error(f"Missing {model} model")
-            raise RuntimeError(f"Model at ./models/{model} not found")
+    for model_path in [MAP_UMAP_PATH, CLUSTER_UMAP_PATH, CLUSTER_HDBSCAN_PATH]:
+        if not os.path.exists(model_path):
+            logger.error(f"Missing {model_path} model")
+            raise RuntimeError(f"Model at {model_path} not found")
 
     articles, clusters = get_documents()
     embeddings = calc_embeddings(articles)
