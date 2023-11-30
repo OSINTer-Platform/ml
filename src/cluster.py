@@ -87,7 +87,7 @@ def create_cluster(cluster_nr: int, articles: list[FullArticle]) -> FullCluster:
             not_relevant.append(article)
 
     title, description, summary = describe_cluster(cluster_nr, relevant)
-    keywords = []
+    keywords: list[str] = []
 
     return FullCluster(
         id=md5(str(cluster_nr).encode("utf-8")).hexdigest(),

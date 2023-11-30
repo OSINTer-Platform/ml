@@ -90,8 +90,6 @@ def update_articles() -> None:
     logger.info(f"Updated {updated_clusters_count} clusters")
 
 
-
-
 @app.command()
 def create_models() -> None:
     if not bool(config_options.OPENAI_KEY):

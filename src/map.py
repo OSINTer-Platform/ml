@@ -15,7 +15,9 @@ UMAP_MODEL_PATH = "./models/map_umap"
 
 def calc_cords(
     articles: list[FullArticle], embeddings: NDArray[Any, Any], regenerate: bool
-):
+) -> None:
+    umap: UMAP
+
     if regenerate:
         logger.debug("Generating new umap model")
         umap = UMAP(
@@ -29,7 +31,7 @@ def calc_cords(
 
     else:
         with open(UMAP_MODEL_PATH, "rb") as f:
-            umap: UMAP = pickle.load(f)
+            umap = pickle.load(f)
 
     reduced_embeddings = cast(
         NDArray[Shape["*, 2"], Float32], umap.transform(embeddings)
