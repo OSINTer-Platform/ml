@@ -1,4 +1,5 @@
-from typing import Any, Callable, cast
+import pickle
+from typing import Any, Callable
 from nptyping import NDArray
 
 import logging
@@ -21,31 +22,18 @@ from .inference import (
     query_openai,
     construct_description_prompts,
 )
-from . import embedding_model
 
-from bertopic import BERTopic
 from umap import UMAP
-from hdbscan import HDBSCAN
-from sklearn.feature_extraction.text import CountVectorizer
+from hdbscan import HDBSCAN, approximate_predict
 
 logger = logging.getLogger("osinter")
 
-umap_model = UMAP(
-    n_neighbors=7, n_components=20, min_dist=0.0, metric="cosine", random_state=42
-)
-hdbscan_model = HDBSCAN(
-    min_cluster_size=5,
-    min_samples=5,
-    cluster_selection_epsilon=0.2,
-    metric="euclidean",
-    cluster_selection_method="eom",
-    prediction_data=True,
-)
-vectorizer_model = CountVectorizer(stop_words="english", min_df=2, ngram_range=(1, 2))
+UMAP_MODEL_PATH = "./models/cluster_umap"
+HDBSCAN_MODEL_PATH = "./models/cluster_hdbscan"
 
 
 def describe_cluster(
-    keywords: list[str], representative_docs: list[str], use_openai: bool = True
+    cluster_nr: int, articles: list[FullArticle]
 ) -> tuple[str, str, str]:
     @retry(
         stop=stop_after_attempt(3),
@@ -66,15 +54,12 @@ def describe_cluster(
         return extract_labeled(openai_response, labels)
 
     # Defaults in case openai return nonsensical answer
-    title = " | ".join([keyword.capitalize() for keyword in keywords])
-    description = " | ".join([keyword.capitalize() for keyword in keywords])
-    summary = ""
+    title = f"Cluster {cluster_nr}"
+    description = f"This cluster contains {len(articles)} articles"
+    summary = "A summary isn't available"
     default_response = title, description, summary
 
-    if not use_openai:
-        return default_response
-
-    prompts, labels = construct_description_prompts(keywords, representative_docs)
+    prompts, labels = construct_description_prompts(articles)
 
     try:
         response = get_open_ai_description(prompts, labels)
@@ -91,82 +76,76 @@ def describe_cluster(
         return default_response
 
 
-def fit_topic_model(
-    articles: list[FullArticle], embeddings: NDArray[Any, Any]
-) -> BERTopic:
-    topic_model = BERTopic(
-        # Pipeline models
-        embedding_model=embedding_model,
-        umap_model=umap_model,
-        hdbscan_model=hdbscan_model,
-        vectorizer_model=vectorizer_model,
-        # Hyperparameters
-        top_n_words=10,
-        verbose=True,
+def create_cluster(cluster_nr: int, articles: list[FullArticle]) -> FullCluster:
+    relevant: list[FullArticle] = []
+    not_relevant: list[FullArticle] = []
+
+    for article in articles:
+        if article.ml.cluster == cluster_nr:
+            relevant.append(article)
+        else:
+            not_relevant.append(article)
+
+    title, description, summary = describe_cluster(cluster_nr, relevant)
+    keywords = []
+
+    return FullCluster(
+        id=md5(str(cluster_nr).encode("utf-8")).hexdigest(),
+        nr=cluster_nr,
+        document_count=len(relevant),
+        title=title,
+        description=description,
+        summary=summary,
+        keywords=keywords,
+        documents={article.id for article in relevant},
+        dating={article.publish_date for article in relevant},
     )
-
-    contents = [article.content for article in articles]
-
-    logger.debug("Fitting to BERTopic")
-    topic_model.fit_transform(contents, embeddings)
-    return topic_model
 
 
 def create_clusters(
     articles: list[FullArticle],
     embeddings: NDArray[Any, Any],
-    save_model: None | str,
-    use_openai: bool = True,
 ) -> list[FullCluster]:
-    def create_cluster(record: dict[str, Any], topic_numbers: list[int]) -> FullCluster:
-        topic_docs: list[FullArticle] = []
-        representative_docs: list[FullArticle] = []
+    logger.debug("Fitting new UMAP model")
+    umap = UMAP(
+        min_dist=0, n_neighbors=7, n_components=20, metric="cosine", random_state=42
+    )
+    reduced_embeddings = umap.fit_transform(embeddings)
 
-        for topic, article in zip(topic_numbers, articles):
-            if topic == record["Topic"]:
-                topic_docs.append(article)
+    logger.debug(f'Saving UMAP model to file "{UMAP_MODEL_PATH}"')
+    with open(UMAP_MODEL_PATH, "wb") as f:
+        pickle.dump(umap, f)
 
-            if article.content in record["Representative_Docs"]:
-                representative_docs.append(article)
+    logger.debug("Fitting new HDBSCAN model")
+    hdbscan = HDBSCAN(
+        min_cluster_size=5,
+        min_samples=5,
+        cluster_selection_epsilon=0.2,
+        metric="euclidean",
+        cluster_selection_method="eom",
+        prediction_data=True,
+    )
+    labels = hdbscan.fit_predict(reduced_embeddings)
 
-        title, description, summary = describe_cluster(
-            record["Representation"], record["Representative_Docs"], use_openai
-        )
+    logger.debug(f'Saving HDBSCAN model to file "{HDBSCAN_MODEL_PATH}"')
+    with open(HDBSCAN_MODEL_PATH, "wb") as f:
+        pickle.dump(umap, f)
 
-        return FullCluster(
-            id=md5(str(record["Topic"]).encode("utf-8")).hexdigest(),
-            nr=record["Topic"],
-            document_count=record["Count"],
-            title=title,
-            description=description,
-            summary=summary,
-            keywords=record["Representation"],
-            representative_documents=[article.id for article in representative_docs],
-            documents={article.id for article in topic_docs},
-            dating={article.publish_date for article in topic_docs},
-        )
+    norm_labels = [int(label) for label in labels]
 
-    logger.debug("Fitting new model")
-    topic_model = fit_topic_model(articles, embeddings)
+    logger.debug("Modifying articles")
 
-    if save_model:
-        logger.debug(f'Saving model to file "{save_model}"')
-        topic_model.save(save_model, serialization="pickle")
+    for i, article in enumerate(articles):
+        article.ml.cluster = norm_labels[i]
 
-    logger.debug("Normalizing and enriching cluster data")
+    logger.debug(f"Creating {max(norm_labels)} clusters")
+    cluster_nrs = list(set(norm_labels))
 
-    records = topic_model.get_topic_info().to_dict("records")
+    handle_cluster: Callable[[int], FullCluster] = lambda cluster_nr: create_cluster(
+        cluster_nr, articles
+    )
 
-    # TODO: Check type of returned topics
-    topic_numbers = cast(list[int], topic_model.topics_)
-
-    for topic, article in zip(topic_numbers, articles):
-        article.ml.cluster = topic
-
-    handle_record: Callable[
-        [dict[str, Any]], FullCluster
-    ] = lambda record: create_cluster(record, topic_numbers)
-    clusters: list[FullCluster] = process_threaded(records, handle_record)
+    clusters: list[FullCluster] = process_threaded(cluster_nrs, handle_cluster)
 
     return clusters
 
@@ -175,35 +154,34 @@ def cluster_new_articles(
     articles: list[FullArticle],
     embeddings: NDArray[Any, Any],
     clusters: list[FullCluster],
-    saved_model: str,
 ) -> None:
     def update_clusters(
         clusters: list[FullCluster],
         articles: list[FullArticle],
-        topic_numbers: list[int],
     ) -> None:
         for cluster in clusters:
-            if cluster.nr not in topic_numbers:
-                continue
+            relevant: list[FullArticle] = [
+                article for article in articles if article.ml.cluster == cluster.nr
+            ]
 
-            for topic, article in zip(topic_numbers, articles):
-                if topic == cluster.nr:
-                    cluster.documents.add(article.id)
-                    cluster.dating.add(article.publish_date)
+            cluster.documents = {article.id for article in relevant}
+            cluster.dating = {article.publish_date for article in relevant}
 
-                    cluster.document_count = len(cluster.documents)
+            cluster.document_count = len(cluster.documents)
 
-    logger.debug(f'Loading model from file "{saved_model}"')
+    logger.debug(f'Loading UMAP from file "{UMAP_MODEL_PATH}"')
+    with open(UMAP_MODEL_PATH, "rb") as f:
+        umap: UMAP = pickle.load(f)
 
-    topic_model = BERTopic.load(saved_model)
-    topic_numbers, _ = topic_model.transform(
-        [article.content for article in articles], embeddings
-    )
+    logger.debug(f'Loading HDBSCAN from file "{HDBSCAN_MODEL_PATH}"')
+    with open(HDBSCAN_MODEL_PATH, "rb") as f:
+        hdbscan: HDBSCAN = pickle.load(f)
 
-    # Despite typed differently, topic_numbers is numpy int64 and needs conversion
-    topic_numbers = [int(nr) for nr in topic_numbers]
+    reduced_embeddings = umap.transform(embeddings)
+    labels = approximate_predict(hdbscan, reduced_embeddings)
+    norm_labels = [int(label) for label in labels]
 
-    for topic, article in zip(topic_numbers, articles):
-        article.ml.cluster = topic
+    for i, article in enumerate(articles):
+        article.ml.cluster = norm_labels[i]
 
-    update_clusters(clusters, articles, topic_numbers)
+    update_clusters(clusters, articles)
