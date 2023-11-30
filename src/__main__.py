@@ -5,13 +5,14 @@ from openai.types.chat import ChatCompletionMessageParam
 
 import typer
 from nptyping import NDArray
+from sentence_transformers import SentenceTransformer
 from src.cluster import create_clusters, cluster_new_articles
 from src.inference import query_openai
 from src.multithreading import process_threaded
 
 from .map import calc_cords, calc_similar
 
-from . import config_options, embedding_model
+from . import config_options
 from modules.elastic import ArticleSearchQuery
 from modules.objects import FullCluster, FullArticle
 
@@ -20,6 +21,9 @@ app = typer.Typer(no_args_is_help=True)
 
 
 def calc_embeddings(articles: list[FullArticle]) -> NDArray[Any, Any]:
+    logger.debug("Loading embedding model")
+    embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
     logger.debug("Pre-calculating embeddings for articles")
     contents = [article.content for article in articles]
 
