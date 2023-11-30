@@ -134,6 +134,9 @@ def create_models() -> None:
 
 @app.command()
 def summarize_articles(all: bool = False, batch_size: int = 100) -> None:
+    if not bool(config_options.OPENAI_KEY):
+        raise Exception("OpenAI needed to generate clusters")
+
     def get_prompt(content: str) -> list[ChatCompletionMessageParam]:
         return [
             {
