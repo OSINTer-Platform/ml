@@ -1,13 +1,10 @@
 import logging
 import os
-import pickle
 from typing import Any, cast
 from openai.types.chat import ChatCompletionMessageParam
 
 import typer
 from nptyping import NDArray
-from umap import UMAP
-
 from src.cluster import create_clusters, cluster_new_articles
 from src.inference import query_openai
 from src.multithreading import process_threaded
@@ -55,13 +52,8 @@ def update_articles() -> None:
     articles, clusters = get_documents()
     embeddings = calc_embeddings(articles)
 
-    logger.info("Loading UMAP model")
-
-    with open("./models/umap", "rb") as f:
-        umap: UMAP = pickle.load(f)
-
     logger.info("Calculating cords")
-    calc_cords(articles, embeddings, umap)
+    calc_cords(articles, embeddings, False)
 
     logger.info("Calculating similar articles")
     calc_similar(articles, 20)
@@ -117,12 +109,7 @@ def create_models() -> None:
     logger.info(f"Removed {removed_clusters} old clusters")
 
     logger.info("Creating umap model")
-    model = calc_cords(articles, embeddings)
-
-    logger.info("Saving umap model")
-
-    with open("./models/umap", "wb") as f:
-        pickle.dump(model, f)
+    calc_cords(articles, embeddings, True)
 
     logger.info("Calculating similar articles")
     calc_similar(articles, 20)
