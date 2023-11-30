@@ -3,9 +3,11 @@ from typing import Any, cast, Tuple, TypeVar
 import logging
 
 from . import config_options
+from modules.objects import FullArticle
 
 from openai import OpenAIError, OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
+import tiktoken
 
 from tenacity import (
     RetryError,
@@ -57,13 +59,13 @@ def query_openai(prompts: list[ChatCompletionMessageParam]) -> str | None:
     )
     def query(q: list[ChatCompletionMessageParam]) -> ChatCompletion:
         return openai_client.chat.completions.create(
-                model=config_options.OPENAI_MODEL,
-                messages=q,
-                n=1,
-                temperature=1,
-                frequency_penalty=0,
-                presence_penalty=0,
-            )
+            model=config_options.OPENAI_MODEL,
+            messages=q,
+            n=1,
+            temperature=1,
+            frequency_penalty=0,
+            presence_penalty=0,
+        )
 
     try:
         return query(prompts).choices[0].message.content
@@ -72,13 +74,14 @@ def query_openai(prompts: list[ChatCompletionMessageParam]) -> str | None:
 
 
 def construct_description_prompts(
-    keywords: list[str], representative_docs: list[str]
+    articles: list[FullArticle],
 ) -> tuple[list[ChatCompletionMessageParam], tuple[str, str, str]]:
-    descriptionPrompt = f"""
-I have topic is described by the following keywords: {' '.join(keywords)}
-The following documents delimited by triple quotes are a small but representative subset of all documents in the topic:
+    description_prompt = f"""
+I have topic containing a set of news articles, descriping a topic within cybersecurity.
+The following documents delimited by triple quotes are the title and description of a small but representative subset of all documents in the topic.
+As such you should choose the broadest description of the topic that fits the articles:
 """
-    instructionPrompt = """
+    instruction_prompt = """
 Based on the information above return the following
 
 A title for this topic of at most 10 words
@@ -91,15 +94,25 @@ topic_description: <description>
 topic_summary: <summary>
     """
 
+    enc = tiktoken.encoding_for_model(config_options.OPENAI_MODEL)
+
     openai_messages: list[ChatCompletionMessageParam] = [
-        {"role": "user", "content": descriptionPrompt}
+        {"role": "user", "content": description_prompt},
+        {"role": "user", "content": ""},
     ]
-    openai_messages.extend(
-        [
-            {"role": "user", "content": f'"""{doc[:3200]}"""'}
-            for doc in representative_docs
-        ]
-    )
-    openai_messages.append({"role": "user", "content": instructionPrompt})
+
+    prompt_length = len(enc.encode(description_prompt + instruction_prompt))
+
+    for article in articles:
+        article_description = article.title + " " + article.description
+        prompt_length += len(enc.encode(article_description))
+
+        # Using 80% of available tokens to leave room for answer
+        if prompt_length > (config_options.OPENAI_TOKEN_LIMIT * 0.8):
+            break
+
+        openai_messages[-1]["content"] += f'"""{article_description}"""'  # type: ignore
+
+    openai_messages.append({"role": "user", "content": instruction_prompt})
 
     return openai_messages, ("topic_title: ", "topic_description: ", "topic_summary: ")

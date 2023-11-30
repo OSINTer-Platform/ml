@@ -1,20 +1,23 @@
 import logging
 import os
-import pickle
 from typing import Any, cast
 from openai.types.chat import ChatCompletionMessageParam
 
 import typer
 from nptyping import NDArray
-from umap import UMAP
+from sentence_transformers import SentenceTransformer
 
-from src.cluster import create_clusters, cluster_new_articles
+from src.cluster import (
+    create_clusters,
+    cluster_new_articles,
+    UMAP_MODEL_PATH as CLUSTER_UMAP_PATH,
+    HDBSCAN_MODEL_PATH as CLUSTER_HDBSCAN_PATH,
+)
 from src.inference import query_openai
 from src.multithreading import process_threaded
+from src.map import calc_cords, calc_similar, UMAP_MODEL_PATH as MAP_UMAP_PATH
 
-from .map import calc_cords, calc_similar
-
-from . import config_options, embedding_model
+from . import config_options
 from modules.elastic import ArticleSearchQuery
 from modules.objects import FullCluster, FullArticle
 
@@ -23,6 +26,9 @@ app = typer.Typer(no_args_is_help=True)
 
 
 def calc_embeddings(articles: list[FullArticle]) -> NDArray[Any, Any]:
+    logger.debug("Loading embedding model")
+    embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
     logger.debug("Pre-calculating embeddings for articles")
     contents = [article.content for article in articles]
 
@@ -47,21 +53,16 @@ def get_documents() -> tuple[list[FullArticle], list[FullCluster]]:
 @app.command()
 def update_articles() -> None:
     logger.info("Verifying presence of topic and umap models")
-    for model in ["topic_model", "umap"]:
-        if not os.path.exists(f"./models/{model}"):
-            logger.error(f"Missing {model} model")
-            raise RuntimeError(f"Model at ./models/{model} not found")
+    for model_path in [MAP_UMAP_PATH, CLUSTER_UMAP_PATH, CLUSTER_HDBSCAN_PATH]:
+        if not os.path.exists(model_path):
+            logger.error(f"Missing {model_path} model")
+            raise RuntimeError(f"Model at {model_path} not found")
 
     articles, clusters = get_documents()
     embeddings = calc_embeddings(articles)
 
-    logger.info("Loading UMAP model")
-
-    with open("./models/umap", "rb") as f:
-        umap: UMAP = pickle.load(f)
-
     logger.info("Calculating cords")
-    calc_cords(articles, embeddings, umap)
+    calc_cords(articles, embeddings, False)
 
     logger.info("Calculating similar articles")
     calc_similar(articles, 20)
@@ -71,7 +72,6 @@ def update_articles() -> None:
         articles,
         embeddings,
         clusters,
-        saved_model="./models/topic_model",
     )
 
     logger.info(f"Updating {len(articles)} articles")
@@ -94,13 +94,14 @@ def update_articles() -> None:
 
 @app.command()
 def create_models() -> None:
+    if not bool(config_options.OPENAI_KEY):
+        raise Exception("OpenAI needed to generate clusters")
+
     articles, old_clusters = get_documents()
     embeddings = calc_embeddings(articles)
 
     logger.info("Generating clusters and topic model. This could take some time")
-    new_clusters = create_clusters(
-        articles, embeddings, "./models/topic_model", bool(config_options.OPENAI_KEY)
-    )
+    new_clusters = create_clusters(articles, embeddings)
 
     old_cluster_ids = [cluster.id for cluster in old_clusters]
     new_cluster_ids = [cluster.id for cluster in new_clusters]
@@ -117,12 +118,7 @@ def create_models() -> None:
     logger.info(f"Removed {removed_clusters} old clusters")
 
     logger.info("Creating umap model")
-    model = calc_cords(articles, embeddings)
-
-    logger.info("Saving umap model")
-
-    with open("./models/umap", "wb") as f:
-        pickle.dump(model, f)
+    calc_cords(articles, embeddings, True)
 
     logger.info("Calculating similar articles")
     calc_similar(articles, 20)
@@ -138,6 +134,9 @@ def create_models() -> None:
 
 @app.command()
 def summarize_articles(all: bool = False, batch_size: int = 100) -> None:
+    if not bool(config_options.OPENAI_KEY):
+        raise Exception("OpenAI needed to generate clusters")
+
     def get_prompt(content: str) -> list[ChatCompletionMessageParam]:
         return [
             {

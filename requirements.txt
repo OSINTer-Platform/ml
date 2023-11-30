@@ -16,4 +16,5 @@ tenacity
 typer
 openai
 nptyping
-bertopic
+tiktoken
+sentence_transformers
