@@ -76,12 +76,14 @@ def describe_cluster(
         return default_response
 
 
-def create_cluster(cluster_nr: int, articles: list[FullArticle]) -> FullCluster:
+def create_cluster(
+    cluster_nr: int, articles: list[FullArticle], labels: list[int]
+) -> FullCluster:
     relevant: list[FullArticle] = []
     not_relevant: list[FullArticle] = []
 
-    for article in articles:
-        if article.ml.cluster == cluster_nr:
+    for i, article in enumerate(articles):
+        if labels[i] == cluster_nr:
             relevant.append(article)
         else:
             not_relevant.append(article)
@@ -100,6 +102,23 @@ def create_cluster(cluster_nr: int, articles: list[FullArticle]) -> FullCluster:
         documents={article.id for article in relevant},
         dating={article.publish_date for article in relevant},
     )
+
+
+def update_articles(
+    articles: list[FullArticle], clusters: list[FullCluster], labels: list[int]
+) -> None:
+    logger.debug("Modifying articles")
+
+    cluster_lookup = {cluster.nr: cluster for cluster in clusters}
+
+    for i, article in enumerate(articles):
+        current_label = labels[i]
+        if current_label in cluster_lookup:
+            article.ml.cluster = cluster_lookup[current_label].id
+        else:
+            logger.error(
+                f'Missing cluster description for cluster {i} for article: "{article.id}: {article.title}"'
+            )
 
 
 def create_clusters(
@@ -133,19 +152,16 @@ def create_clusters(
 
     norm_labels = [int(label) for label in labels]
 
-    logger.debug("Modifying articles")
-
-    for i, article in enumerate(articles):
-        article.ml.cluster = norm_labels[i]
-
     logger.debug(f"Creating {max(norm_labels)} clusters")
     cluster_nrs = list(set(norm_labels))
 
     handle_cluster: Callable[[int], FullCluster] = lambda cluster_nr: create_cluster(
-        cluster_nr, articles
+        cluster_nr, articles, norm_labels
     )
 
     clusters: list[FullCluster] = process_threaded(cluster_nrs, handle_cluster)
+
+    update_articles(articles, clusters, norm_labels)
 
     return clusters
 
@@ -161,7 +177,7 @@ def cluster_new_articles(
     ) -> None:
         for cluster in clusters:
             relevant: list[FullArticle] = [
-                article for article in articles if article.ml.cluster == cluster.nr
+                article for article in articles if article.ml.cluster == cluster.id
             ]
 
             cluster.documents = {article.id for article in relevant}
@@ -181,7 +197,5 @@ def cluster_new_articles(
     labels = approximate_predict(hdbscan, reduced_embeddings)
     norm_labels = [int(label) for label in labels]
 
-    for i, article in enumerate(articles):
-        article.ml.cluster = norm_labels[i]
-
+    update_articles(articles, clusters, norm_labels)
     update_clusters(clusters, articles)
