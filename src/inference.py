@@ -52,8 +52,8 @@ def extract_labeled(text: str, extraction_labels: StrTuple) -> StrTuple:
 
 def query_openai(prompts: list[ChatCompletionMessageParam]) -> str | None:
     @retry(
-        wait=wait_random_exponential(min=1, max=600),
-        stop=stop_after_attempt(10),
+        wait=wait_random_exponential(min=1, max=3600),
+        stop=stop_after_attempt(20),
         retry=retry_if_exception_type(OpenAIError),
         before_sleep=before_sleep_log(logger, logging.DEBUG),
     )
