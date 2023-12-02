@@ -148,7 +148,7 @@ def create_clusters(
 
     logger.debug(f'Saving HDBSCAN model to file "{HDBSCAN_MODEL_PATH}"')
     with open(HDBSCAN_MODEL_PATH, "wb") as f:
-        pickle.dump(umap, f)
+        pickle.dump(hdbscan, f)
 
     norm_labels = [int(label) for label in labels]
 
