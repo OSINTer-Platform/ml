@@ -194,7 +194,7 @@ def cluster_new_articles(
         hdbscan: HDBSCAN = pickle.load(f)
 
     reduced_embeddings = umap.transform(embeddings)
-    labels = approximate_predict(hdbscan, reduced_embeddings)
+    labels = approximate_predict(hdbscan, reduced_embeddings)[0]
     norm_labels = [int(label) for label in labels]
 
     update_articles(articles, clusters, norm_labels)
