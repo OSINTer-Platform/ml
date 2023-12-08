@@ -117,7 +117,7 @@ def update_articles(
             article.ml.cluster = cluster_lookup[current_label].id
         else:
             logger.error(
-                f'Missing cluster description for cluster {i} for article: "{article.id}: {article.title}"'
+                f'Missing cluster description for cluster {current_label} for article: "{article.id}: {article.title}"'
             )
 
 
