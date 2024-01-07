@@ -24,12 +24,14 @@ from .inference import (
 )
 
 from umap import UMAP
-from hdbscan import HDBSCAN, approximate_predict
+from hdbscan import HDBSCAN
+from hdbscan.flat import HDBSCAN_flat, approximate_predict_flat
 
 logger = logging.getLogger("osinter")
 
 UMAP_MODEL_PATH = "./models/cluster_umap"
 HDBSCAN_MODEL_PATH = "./models/cluster_hdbscan"
+HDBSCAN_EPSILON = 0.2
 
 
 def describe_cluster(
@@ -136,15 +138,16 @@ def create_clusters(
         pickle.dump(umap, f)
 
     logger.debug("Fitting new HDBSCAN model")
-    hdbscan = HDBSCAN(
+    hdbscan = HDBSCAN_flat(
+        reduced_embeddings,
         min_cluster_size=5,
         min_samples=5,
-        cluster_selection_epsilon=0.2,
+        cluster_selection_epsilon=HDBSCAN_EPSILON,
         metric="euclidean",
         cluster_selection_method="eom",
         prediction_data=True,
     )
-    labels = hdbscan.fit_predict(reduced_embeddings)
+    labels = hdbscan.labels_
 
     logger.debug(f'Saving HDBSCAN model to file "{HDBSCAN_MODEL_PATH}"')
     with open(HDBSCAN_MODEL_PATH, "wb") as f:
@@ -194,7 +197,9 @@ def cluster_new_articles(
         hdbscan: HDBSCAN = pickle.load(f)
 
     reduced_embeddings = umap.transform(embeddings)
-    labels = approximate_predict(hdbscan, reduced_embeddings)[0]
+    labels = approximate_predict_flat(
+        hdbscan, reduced_embeddings, cluster_selection_epsilon=HDBSCAN_EPSILON
+    )[0]
     norm_labels = [int(label) for label in labels]
 
     update_articles(articles, clusters, norm_labels)
