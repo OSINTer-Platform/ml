@@ -4,22 +4,12 @@ from nptyping import NDArray
 
 import logging
 from hashlib import md5
-from openai.types.chat import ChatCompletionMessageParam
-
-from tenacity import (
-    RetryError,
-    before_sleep_log,
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-)
 
 from modules.objects import FullArticle, FullCluster
 
 from .multithreading import process_threaded
 from .inference import (
-    extract_labeled,
-    query_openai,
+    query_and_extract,
     construct_description_prompts,
 )
 
@@ -37,45 +27,36 @@ HDBSCAN_EPSILON = 0.2
 def describe_cluster(
     cluster_nr: int, articles: list[FullArticle]
 ) -> tuple[str, str, str]:
-    @retry(
-        stop=stop_after_attempt(3),
-        retry=retry_if_exception_type(IndexError),
-        before_sleep=before_sleep_log(logger, logging.DEBUG),
+    labels = ("topic_title", "topic_description", "topic_summary")
+
+    prompts = construct_description_prompts(
+        [a.title + " " + a.description for a in articles],
+        """I have topic containing a set of news articles, descriping a topic within cybersecurity.
+The following documents delimited by triple quotes are the title and description of a small but representative subset of all documents in the topic.
+As such you should choose the broadest description of the topic that fits the articles:""",
+        """Based on the information above return the following
+A title for this topic of at most 10 words
+A description of the topic with a length of 1 to 2 sentences
+A summary of the topic with a length of 4 to 6 sentences
+
+The returned information should be in the following format:
+topic_title: <title>
+topic_description: <description>
+topic_summary: <summary>
+""",
     )
-    def get_open_ai_description(
-        prompts: list[ChatCompletionMessageParam], labels: tuple[str, str, str]
-    ) -> None | tuple[str, str, str]:
-        openai_response = query_openai(prompts)
 
-        if openai_response is None:
-            logger.warn(
-                f'Response for cluster with title "{title}" failed to query openai'
-            )
-            return None
+    response = query_and_extract(prompts, labels)
 
-        return extract_labeled(openai_response, labels)
-
-    # Defaults in case openai return nonsensical answer
-    title = f"Cluster {cluster_nr}"
-    description = f"This cluster contains {len(articles)} articles"
-    summary = "A summary isn't available"
-    default_response = title, description, summary
-
-    prompts, labels = construct_description_prompts(articles)
-
-    try:
-        response = get_open_ai_description(prompts, labels)
-
-        if response:
-            return response
-        else:
-            return default_response
-
-    except RetryError:
-        logger.error(
-            f'Unable to extract details from OpenAI response with labels "{" | ".join(labels)}"'
+    if response:
+        return response
+    else:
+        logger.error(f"Unable to generate descriptions for cluster {cluster_nr}")
+        return (
+            f"Cluster {cluster_nr}",
+            f"This cluster contains {len(articles)} articles",
+            "A summary isn't available",
         )
-        return default_response
 
 
 def create_cluster(

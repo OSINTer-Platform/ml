@@ -1,4 +1,4 @@
-from typing import Any, cast, Tuple, TypeVar
+from typing import Any, Callable, cast, Tuple, TypeVar
 
 import logging
 
@@ -41,16 +41,19 @@ def extract_labeled(text: str, extraction_labels: StrTuple) -> StrTuple:
     extractions: list[str] = []
 
     for label in extraction_labels[1:]:
-        response_parts = unprocesseced_response.split(label)
+        response_parts = unprocesseced_response.split(f"{label}: ")
         extractions.append(response_parts[0])
         unprocesseced_response = response_parts[-1]
 
     extractions.append(unprocesseced_response)
 
+    if len(extractions) != len(extraction_labels):
+        raise IndexError("Not all labels are present")
+
     return cast(StrTuple, tuple(extractions))
 
 
-def query_openai(prompts: list[ChatCompletionMessageParam]) -> str | None:
+def query_openai(prompts: list[ChatCompletionMessageParam]) -> str:
     @retry(
         wait=wait_random_exponential(min=1, max=3600),
         stop=stop_after_attempt(20),
@@ -67,33 +70,38 @@ def query_openai(prompts: list[ChatCompletionMessageParam]) -> str | None:
             presence_penalty=0,
         )
 
+    response = query(prompts).choices[0].message.content
+    if isinstance(response, str):
+        return response
+    else:
+        raise TypeError("OpenAI response was empty")
+
+
+def query_and_extract(
+    prompts: list[ChatCompletionMessageParam], labels: StrTuple
+) -> None | StrTuple:
+    @retry(
+        stop=stop_after_attempt(3),
+        retry=retry_if_exception_type((IndexError, TypeError)),
+        before_sleep=before_sleep_log(logger, logging.DEBUG),
+    )
+    def attempt():
+        openai_response = query_openai(prompts)
+
+        return extract_labeled(openai_response, labels)
+
     try:
-        return query(prompts).choices[0].message.content
-    except RetryError:
+        return attempt()
+    except:
+        logger.error(
+            f'Unable to extract details from OpenAI response with labels "{" | ".join(labels)}"'
+        )
         return None
 
 
 def construct_description_prompts(
-    articles: list[FullArticle],
-) -> tuple[list[ChatCompletionMessageParam], tuple[str, str, str]]:
-    description_prompt = f"""
-I have topic containing a set of news articles, descriping a topic within cybersecurity.
-The following documents delimited by triple quotes are the title and description of a small but representative subset of all documents in the topic.
-As such you should choose the broadest description of the topic that fits the articles:
-"""
-    instruction_prompt = """
-Based on the information above return the following
-
-A title for this topic of at most 10 words
-A description of the topic with a length of 1 to 2 sentences
-A summary of the topic with a length of 4 to 6 sentences
-
-The returned information should be in the following format:
-topic_title: <title>
-topic_description: <description>
-topic_summary: <summary>
-    """
-
+    texts: list[str], description_prompt: str, instruction_prompt: str
+) -> list[ChatCompletionMessageParam]:
     enc = tiktoken.encoding_for_model(config_options.OPENAI_MODEL)
 
     openai_messages: list[ChatCompletionMessageParam] = [
@@ -103,16 +111,15 @@ topic_summary: <summary>
 
     prompt_length = len(enc.encode(description_prompt + instruction_prompt))
 
-    for article in articles:
-        article_description = article.title + " " + article.description
-        prompt_length += len(enc.encode(article_description))
+    for text in texts:
+        prompt_length += len(enc.encode(text))
 
         # Using 80% of available tokens to leave room for answer
         if prompt_length > (config_options.OPENAI_TOKEN_LIMIT * 0.8):
             break
 
-        openai_messages[-1]["content"] += f'"""{article_description}"""'  # type: ignore
+        openai_messages[-1]["content"] += f'"""{text}"""'  # type: ignore
 
     openai_messages.append({"role": "user", "content": instruction_prompt})
 
-    return openai_messages, ("topic_title: ", "topic_description: ", "topic_summary: ")
+    return openai_messages
