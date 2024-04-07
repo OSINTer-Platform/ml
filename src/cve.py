@@ -73,7 +73,7 @@ def query_nvd(
         logger.debug(
             f'Queried {json["resultsPerPage"]} vulnerabilities, {json["totalResults"] - (json["startIndex"] + json["resultsPerPage"])} left'
         )
-        return json["vulnerabilities"]
+        return cast(list[dict[str, Any]], json["vulnerabilities"])
 
     QUERY_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0?"
 

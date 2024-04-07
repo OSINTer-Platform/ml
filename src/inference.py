@@ -85,7 +85,7 @@ def query_and_extract(
         retry=retry_if_exception_type((IndexError, TypeError)),
         before_sleep=before_sleep_log(logger, logging.DEBUG),
     )
-    def attempt():
+    def attempt() -> StrTuple:
         openai_response = query_openai(prompts)
 
         return extract_labeled(openai_response, labels)
