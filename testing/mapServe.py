@@ -18,6 +18,7 @@ def returnstuff():
             "id": article["id"],
             "title": article["title"],
             "description": article["description"],
+            "url": article["url"],
             "source": article["source"],
             "profile": article["profile"],
             "publish_date": article["publish_date"],
