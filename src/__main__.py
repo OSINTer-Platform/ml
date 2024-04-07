@@ -2,23 +2,27 @@ import logging
 import os
 from typing import Any, cast
 from openai.types.chat import ChatCompletionMessageParam
+from datetime import datetime
 
 import typer
 from nptyping import NDArray
 from sentence_transformers import SentenceTransformer
 
+from modules.objects.articles import BaseArticle
+from modules.objects.cves import FullCVE
 from src.cluster import (
     create_clusters,
     cluster_new_articles,
     UMAP_MODEL_PATH as CLUSTER_UMAP_PATH,
     HDBSCAN_MODEL_PATH as CLUSTER_HDBSCAN_PATH,
 )
+from src.cve import generate_cve_title, query_nvd, sort_articles_by_cves, validate_cve
 from src.inference import query_openai
 from src.multithreading import process_threaded
 from src.map import calc_cords, calc_similar, UMAP_MODEL_PATH as MAP_UMAP_PATH
 
 from . import config_options
-from modules.elastic import ArticleSearchQuery
+from modules.elastic import ArticleSearchQuery, CVESearchQuery
 from modules.objects import FullCluster, FullArticle
 
 logger = logging.getLogger("osinter")
@@ -191,6 +195,103 @@ def summarize_articles(all: bool = False, batch_size: int = 100) -> None:
             )
 
     logger.info(f"Updated {updated_articles_count} articles")
+
+
+def _create_cves(
+    start_date: datetime | None = None,
+    sorted_articles: dict[str, list[BaseArticle]] | None = None,
+) -> None:
+    if sorted_articles is None:
+        logger.info("Downloading articles")
+        articles = config_options.es_article_client.query_documents(
+            ArticleSearchQuery(limit=0), False
+        )[0]
+
+        sorted_articles = sort_articles_by_cves(articles)
+
+    for raw_cves in query_nvd(start_date):
+        cves: list[FullCVE] = []
+
+        logger.info("Validating CVEs")
+        for raw_cve in raw_cves:
+            articles = []
+            if raw_cve["cve"]["id"] in sorted_articles:
+                articles = sorted_articles[raw_cve["cve"]["id"]]
+
+            cves.append(validate_cve(raw_cve["cve"], articles))
+
+        logger.info("Creating CVE titles")
+
+        cves = process_threaded(cves, generate_cve_title, 32)
+
+        logger.info("Saving CVEs")
+        config_options.es_cve_client.save_documents(cves, False, 500)
+
+
+@app.command()
+def create_cves() -> None:
+    _create_cves()
+
+
+@app.command()
+def update_cves() -> None:
+    logger.info("Downloading articles")
+    articles = config_options.es_article_client.query_documents(
+        ArticleSearchQuery(limit=0), False
+    )[0]
+    sorted_articles = sort_articles_by_cves(articles)
+
+    logger.info("Getting latest CVE")
+    try:
+        latest_cve = config_options.es_cve_client.query_documents(
+            CVESearchQuery(limit=1, sort_by="modified_date", sort_order="desc"), True
+        )[0][0]
+    except IndexError:
+        logger.error('No existing CVEs found, please run "create_cves" first')
+        return
+
+    _create_cves(latest_cve.modified_date, sorted_articles)
+
+    logger.info("Querying CVEs for updating")
+    cves_requiring_update = config_options.es_cve_client.query_documents(
+        CVESearchQuery(limit=0, cves=list(sorted_articles.keys())), True
+    )[0]
+
+    logger.info(f"{len(cves_requiring_update)} CVEs to process")
+
+    for cve in cves_requiring_update:
+        relevant_articles = sorted_articles[cve.cve]
+        cve.document_count = len(relevant_articles)
+        cve.documents = {article.id for article in relevant_articles}
+        cve.dating = {article.publish_date for article in relevant_articles}
+
+    logger.info("Updating article details of CVEs")
+    config_options.es_cve_client.update_documents(
+        cves_requiring_update, ["document_count", "documents", "dating"]
+    )
+
+
+@app.command()
+def title_cves() -> None:
+    for i, cves in enumerate(
+        config_options.es_cve_client.scroll_documents(
+            CVESearchQuery(limit=0, sort_by="publish_date", sort_order="desc"),
+            pit_keep_alive="30m",
+            batch_size=1000,
+        )
+    ):
+        logger.info(f"Processing cve batch {i} of {len(cves)} cves")
+
+        untitled_cves = [cve for cve in cves if not cve.title]
+
+        if len(untitled_cves) == 0:
+            continue
+
+        logger.info(f"Generating titles for {len(untitled_cves)} cves")
+        titled_cves = process_threaded(untitled_cves, generate_cve_title, 32)
+
+        logger.info("Updating CVEs")
+        config_options.es_cve_client.update_documents(titled_cves, ["title"])
 
 
 if __name__ == "__main__":
