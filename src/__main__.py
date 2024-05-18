@@ -16,7 +16,13 @@ from src.cluster import (
     UMAP_MODEL_PATH as CLUSTER_UMAP_PATH,
     HDBSCAN_MODEL_PATH as CLUSTER_HDBSCAN_PATH,
 )
-from src.cve import generate_cve_title, query_nvd, sort_articles_by_cves, validate_cve
+from src.cve import (
+    generate_cve_title,
+    get_article_common_keywords,
+    query_nvd,
+    sort_articles_by_cves,
+    validate_cve,
+)
 from src.inference import query_openai
 from src.multithreading import process_threaded
 from src.map import calc_cords, calc_similar, UMAP_MODEL_PATH as MAP_UMAP_PATH
@@ -264,10 +270,11 @@ def update_cves() -> None:
         cve.document_count = len(relevant_articles)
         cve.documents = {article.id for article in relevant_articles}
         cve.dating = {article.publish_date for article in relevant_articles}
+        cve.keywords = get_article_common_keywords(relevant_articles)
 
     logger.info("Updating article details of CVEs")
     config_options.es_cve_client.update_documents(
-        cves_requiring_update, ["document_count", "documents", "dating"]
+        cves_requiring_update, ["document_count", "documents", "dating", "keywords"]
     )
 
 
