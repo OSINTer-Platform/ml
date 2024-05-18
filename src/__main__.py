@@ -254,7 +254,7 @@ def update_cves() -> None:
 
     logger.info("Querying CVEs for updating")
     cves_requiring_update = config_options.es_cve_client.query_documents(
-        CVESearchQuery(limit=0, cves=list(sorted_articles.keys())), True
+        CVESearchQuery(limit=0, cves=set(sorted_articles.keys())), True
     )[0]
 
     logger.info(f"{len(cves_requiring_update)} CVEs to process")
