@@ -279,6 +279,63 @@ def update_cves() -> None:
 
 
 @app.command()
+def major_update_cves(start: str = "") -> None:
+    start_date = datetime.fromisoformat(start) if len(start) > 0 else None
+
+    logger.info("Downloading articles")
+    articles = config_options.es_article_client.query_documents(
+        ArticleSearchQuery(limit=0), False
+    )[0]
+    sorted_articles = sort_articles_by_cves(articles)
+
+    total_new = 0
+
+    for raw_cves in query_nvd(start_date):
+        parsed_cves: list[FullCVE] = []
+
+        for cve in raw_cves:
+            articles = []
+
+            if cve["cve"]["id"] in sorted_articles:
+                articles = sorted_articles[cve["cve"]["id"]]
+
+            parsed_cves.append(validate_cve(cve["cve"], articles))
+
+        cve_ids = [cve.cve for cve in parsed_cves]
+        existing_cves = {
+            cve.cve: cve
+            for cve in config_options.es_cve_client.query_documents(
+                CVESearchQuery(limit=10000, cves=set(cve_ids)), True
+            )[0]
+        }
+
+        new_cves: list[FullCVE] = []
+
+        for cve in parsed_cves:
+            if (
+                cve.cve not in existing_cves
+                or cve.publish_date != existing_cves[cve.cve].publish_date
+            ):
+                new_cves.append(cve)
+
+        total_new += len(new_cves)
+
+        logger.info(
+            f"Found {len(new_cves)} new cves, with {total_new} total new so far"
+        )
+
+        if len(new_cves) == 0:
+            logger.info("Skipping")
+            continue
+
+        logger.info(f"Creating CVE titles for {len(new_cves)} cves")
+        new_cves = process_threaded(new_cves, generate_cve_title, 32)
+
+        logger.info(f"Saving {len(new_cves)} CVEs")
+        config_options.es_cve_client.save_documents(new_cves, False, 500)
+
+
+@app.command()
 def title_cves() -> None:
     for i, cves in enumerate(
         config_options.es_cve_client.scroll_documents(
