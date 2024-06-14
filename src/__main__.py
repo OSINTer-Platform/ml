@@ -116,7 +116,7 @@ def create_models() -> None:
     clusters_to_remove = {id for id in old_cluster_ids if id not in new_cluster_ids}
 
     logger.info(f"Generated {len(new_clusters)} clusters. Saving them")
-    saved_clusters = config_options.es_cluster_client.save_documents(new_clusters, True)
+    saved_clusters = config_options.es_cluster_client.save_documents(new_clusters)
     logger.info(f"Save {saved_clusters} clusters")
 
     logger.info(f"Removing {len(clusters_to_remove)} old clusters")
@@ -231,7 +231,7 @@ def _create_cves(
         cves = process_threaded(cves, generate_cve_title, 32)
 
         logger.info("Saving CVEs")
-        config_options.es_cve_client.save_documents(cves, False, 500)
+        config_options.es_cve_client.save_documents(cves, chunk_size=500)
 
 
 @app.command()
@@ -332,7 +332,7 @@ def major_update_cves(start: str = "") -> None:
         new_cves = process_threaded(new_cves, generate_cve_title, 32)
 
         logger.info(f"Saving {len(new_cves)} CVEs")
-        config_options.es_cve_client.save_documents(new_cves, False, 500)
+        config_options.es_cve_client.save_documents(new_cves, chunk_size=500)
 
 
 @app.command()
