@@ -293,13 +293,13 @@ def major_update_cves(start: str = "") -> None:
     for raw_cves in query_nvd(start_date):
         parsed_cves: list[FullCVE] = []
 
-        for cve in raw_cves:
+        for raw_cve in raw_cves:
             articles = []
 
-            if cve["cve"]["id"] in sorted_articles:
-                articles = sorted_articles[cve["cve"]["id"]]
+            if raw_cve["cve"]["id"] in sorted_articles:
+                articles = sorted_articles[raw_cve["cve"]["id"]]
 
-            parsed_cves.append(validate_cve(cve["cve"], articles))
+            parsed_cves.append(validate_cve(raw_cve["cve"], articles))
 
         cve_ids = [cve.cve for cve in parsed_cves]
         existing_cves = {
@@ -311,12 +311,12 @@ def major_update_cves(start: str = "") -> None:
 
         new_cves: list[FullCVE] = []
 
-        for cve in parsed_cves:
+        for parsed_cve in parsed_cves:
             if (
-                cve.cve not in existing_cves
-                or cve.publish_date != existing_cves[cve.cve].publish_date
+                parsed_cve.cve not in existing_cves
+                or parsed_cve.publish_date != existing_cves[parsed_cve.cve].publish_date
             ):
-                new_cves.append(cve)
+                new_cves.append(parsed_cve)
 
         total_new += len(new_cves)
 
