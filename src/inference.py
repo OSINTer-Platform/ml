@@ -36,13 +36,13 @@ def extract_labeled(text: str, extraction_labels: StrTuple) -> StrTuple:
     """
 
     first_label = extraction_labels[0]
-    unprocesseced_response = text.split(first_label)[-1]
+    unprocesseced_response = text.split(f"{first_label}:")[-1]
 
     extractions: list[str] = []
 
     for label in extraction_labels[1:]:
-        response_parts = unprocesseced_response.split(f"{label}: ")
-        extractions.append(response_parts[0])
+        response_parts = unprocesseced_response.split(f"{label}:")
+        extractions.append(response_parts[0].strip())
         unprocesseced_response = response_parts[-1]
 
     extractions.append(unprocesseced_response)
