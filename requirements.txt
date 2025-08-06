@@ -5,7 +5,7 @@ umap-learn
 
 # Used for interacting with OSINTer
 pydantic
-elasticsearch
+elasticsearch==8.*
 hdbscan
 
 # Local utils
